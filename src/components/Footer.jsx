@@ -1,0 +1,1 @@
+export default function Footer(){return <footer className="border-t border-slate-800 mt-12 pt-6 flex flex-col md:flex-row gap-2 justify-between text-xs text-slate-500"><span>© 2026 UrbanSense · Protótipo acadêmico CitizenTech</span><span>João Vitor Batista De Mattos · RM 571389 · FIAP</span></footer>}
