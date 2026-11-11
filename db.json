@@ -1,0 +1,44 @@
+{
+  "ocorrencias": [
+    {
+      "id": 1,
+      "titulo": "Calçada irregular (simulação)",
+      "tipo": "Pavimento",
+      "local": "Trecho ilustrativo A — Paulista",
+      "gravidade": "Alta",
+      "status": "Pendente",
+      "descricao": "Desnível hipotético para demonstração de registro de ocorrência.",
+      "data": "2026-11-09"
+    },
+    {
+      "id": 2,
+      "titulo": "Rampa obstruída (simulação)",
+      "tipo": "Acesso",
+      "local": "Trecho ilustrativo B — Paulista",
+      "gravidade": "Crítica",
+      "status": "Em análise",
+      "descricao": "Obstrução fictícia de acesso para teste da plataforma.",
+      "data": "2026-11-08"
+    },
+    {
+      "id": 3,
+      "titulo": "Iluminação reduzida (simulação)",
+      "tipo": "Iluminação",
+      "local": "Trecho ilustrativo C — Paulista",
+      "gravidade": "Média",
+      "status": "Resolvido",
+      "descricao": "Cenário fictício associado ao protótipo ESP32.",
+      "data": "2026-11-07"
+    },
+    {
+      "id": 4,
+      "titulo": "Piso tátil interrompido (simulação)",
+      "tipo": "Sinalização",
+      "local": "Trecho ilustrativo D — Paulista",
+      "gravidade": "Alta",
+      "status": "Pendente",
+      "descricao": "Ocorrência criada apenas para avaliação da interface.",
+      "data": "2026-11-06"
+    }
+  ]
+}
