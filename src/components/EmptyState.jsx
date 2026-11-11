@@ -1,0 +1,1 @@
+import { Inbox } from 'lucide-react';export default function EmptyState({text='Nenhuma ocorrência encontrada.'}){return <div className="glass rounded-2xl p-12 text-center text-slate-400"><Inbox size={30} className="mx-auto mb-3"/><p>{text}</p></div>}
