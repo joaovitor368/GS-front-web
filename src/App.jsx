@@ -1,5 +1,6 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from "react";
+import { supabase } from "./lib/supabase";
 
 import {
   Activity,
@@ -11,102 +12,215 @@ import {
   RadioTower,
   MapPin,
   ExternalLink
-} from 'lucide-react';
+} from "lucide-react";
 
-import Sidebar from './components/SideBar';
-import Header from './components/Header';
-import Hero from './components/Hero';
-import StatCard from './components/StatCard';
-import OcorrenceCard from './components/OcorrenceCard';
-import OcorrenceForm from './components/OcorrenceForm';
-import Filters from './components/Filters';
-import EmptyState from './components/EmptyState';
-import Footer from './components/Footer';
+// COMPONENTES
+import Sidebar from "./components/SideBar";
+import Header from "./components/Header";
+import Hero from "./components/Hero";
+import StatCard from "./components/StatCard";
+import OcorrenceCard from "./components/OcorrenceCard";
+import OcorrenceForm from "./components/OcorrenceForm";
+import Filters from "./components/Filters";
+import EmptyState from "./components/EmptyState";
+import Footer from "./components/Footer";
+import AuthPanel from "./components/AuthPanel";
 
-import { useOcorrencias } from './hooks/useOcorrencias';
-import { useFiltros } from './hooks/useFiltros';
+// HOOKS PERSONALIZADOS
+import { useOcorrencias } from "./hooks/useOcorrencias";
+import { useFiltros } from "./hooks/useFiltros";
 
 export default function App() {
-  const [page, setPage] = useState('painel');
+  // ESTADOS PRINCIPAIS
+  const [page, setPage] = useState("painel");
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState("");
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
+  // SUPABASE E FILTROS
   const api = useOcorrencias();
   const filtros = useFiltros(api.items);
 
+  // AUTENTICAÇÃO SUPABASE
+  useEffect(() => {
+    let ativo = true;
+
+    async function verificarUsuario() {
+      const { data, error } = await supabase.auth.getUser();
+
+      if (!ativo) return;
+
+      if (error) {
+        console.error("Erro ao verificar autenticação:", error);
+      }
+
+      setUser(data?.user ?? null);
+      setAuthLoading(false);
+    }
+
+    verificarUsuario();
+
+    const { data: listener } =
+      supabase.auth.onAuthStateChange((_event, session) => {
+        if (!ativo) return;
+
+        setUser(session?.user ?? null);
+        setAuthLoading(false);
+      });
+
+    return () => {
+      ativo = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // INDICADOR DO HEADER
+  // Representa o sucesso da consulta de ocorrências,
+  // não uma verificação contínua da conexão de rede.
+  const conectado = !api.loading && !api.error;
+
+  // ABRIR FORMULÁRIO PARA NOVA OCORRÊNCIA
   const abrirNovo = () => {
+    if (!user) {
+      setNotice("Faça login para cadastrar uma ocorrência.");
+      return;
+    }
+
     setEditing(null);
+    setNotice("");
     setModal(true);
   };
 
+  // EDITAR OCORRÊNCIA
   const editar = (item) => {
+    if (!user || item.usuario_id !== user.id) {
+      setNotice("Você só pode editar suas próprias ocorrências.");
+      return;
+    }
+
     setEditing(item);
+    setNotice("");
     setModal(true);
   };
 
-  const salvar = async (data) => {
+  // SALVAR NO SUPABASE
+  const salvar = async (dados) => {
+    if (!user) {
+      setNotice("Faça login para salvar uma ocorrência.");
+      return false;
+    }
+
+    if (editing && editing.usuario_id !== user.id) {
+      setNotice("Você não pode alterar esta ocorrência.");
+      return false;
+    }
+
     const ok = editing
-      ? await api.atualizar(editing.id, data)
-      : await api.criar(data);
+      ? await api.atualizar(editing.id, dados)
+      : await api.criar(dados);
 
     if (ok) {
       setNotice(
         editing
-          ? 'Ocorrência atualizada.'
-          : 'Ocorrência cadastrada.'
+          ? "Ocorrência atualizada com sucesso no Supabase."
+          : "Ocorrência cadastrada com sucesso no Supabase."
       );
     }
 
     return ok;
   };
 
+  // EXCLUIR OCORRÊNCIA
   const excluir = async (item) => {
-    if (window.confirm(`Excluir a ocorrência "${item.titulo}"?`)) {
-      if (await api.excluir(item.id)) {
-        setNotice('Ocorrência excluída.');
-      }
+    if (!user || item.usuario_id !== user.id) {
+      setNotice("Você só pode excluir suas próprias ocorrências.");
+      return;
+    }
+
+    const confirmar = window.confirm(
+      `Deseja realmente excluir a ocorrência "${item.titulo}"?`
+    );
+
+    if (!confirmar) return;
+
+    const ok = await api.excluir(item.id);
+
+    if (ok) {
+      setNotice("Ocorrência excluída com sucesso.");
     }
   };
 
+  // INDICADORES CALCULADOS COM OS DADOS DO SUPABASE
   const total = api.items.length;
 
-  const criticas = api.items.filter((x) =>
-    ['Alta', 'Crítica'].includes(x.gravidade)
+  const graves = api.items.filter(
+    (item) => item.gravidade === "Alta"
   ).length;
 
   const resolvidas = api.items.filter(
-    (x) => x.status === 'Resolvido'
+    (item) => item.status === "Resolvido"
+  ).length;
+
+  const pendentes = api.items.filter(
+    (item) => item.status === "Pendente"
   ).length;
 
   return (
     <div className="min-h-screen lg:flex">
-      <Sidebar page={page} setPage={setPage} />
+      {/* MENU LATERAL */}
+      <Sidebar
+        page={page}
+        setPage={setPage}
+      />
 
+      {/* CONTEÚDO PRINCIPAL */}
       <main className="flex-1 min-w-0 p-5 md:p-8 lg:p-10 max-w-[1600px] mx-auto w-full">
-        <Header page={page} />
 
+        {/* HEADER COM STATUS DO SUPABASE */}
+        <Header
+          page={page}
+          conectado={conectado}
+        />
+
+        {/* AUTENTICAÇÃO */}
+        {authLoading ? (
+          <p className="text-slate-400 mb-4">
+            Verificando autenticação...
+          </p>
+        ) : (
+          <AuthPanel user={user} />
+        )}
+
+        {/* NOTIFICAÇÕES */}
         {notice && (
           <div
             role="status"
-            className="mb-5 rounded-xl bg-teal-400/10 border border-teal-400/30 px-4 py-3 text-teal-200 text-sm flex justify-between"
+            className="mb-5 rounded-xl bg-teal-400/10 border border-teal-400/30 px-4 py-3 text-teal-200 text-sm flex justify-between gap-4"
           >
-            {notice}
+            <span>{notice}</span>
 
-            <button onClick={() => setNotice('')}>
+            <button
+              type="button"
+              onClick={() => setNotice("")}
+              className="shrink-0"
+            >
               Fechar
             </button>
           </div>
         )}
 
+        {/* ERROS DO SUPABASE */}
         {api.error && (
           <div
             role="alert"
             className="mb-5 rounded-xl bg-red-500/10 border border-red-500/40 p-4 text-red-200 text-sm"
           >
-            {api.error}
+            <span>{String(api.error)}</span>
 
             <button
+              type="button"
               onClick={api.carregar}
               className="underline ml-2"
             >
@@ -115,24 +229,27 @@ export default function App() {
           </div>
         )}
 
-        {/* PAINEL PRINCIPAL */}
-
-        {page === 'painel' && (
+        {/* VISÃO GERAL */}
+        {page === "painel" && (
           <>
-            <Hero onOpen={() => setPage('ocorrencias')} />
+            <Hero
+              onOpen={() => setPage("ocorrencias")}
+            />
 
+            {/* CARDS DE ESTATÍSTICAS */}
             <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+
               <StatCard
                 label="Ocorrências"
                 value={total}
-                sub="Registros de demonstração"
+                sub="Registros no Supabase"
                 Icon={ClipboardList}
               />
 
               <StatCard
-                label="Alta ou crítica"
-                value={criticas}
-                sub="Prioridade ilustrativa"
+                label="Alta gravidade"
+                value={graves}
+                sub="Ocorrências de alta gravidade"
                 Icon={AlertTriangle}
                 accent="text-orange-300"
               />
@@ -140,28 +257,33 @@ export default function App() {
               <StatCard
                 label="Resolvidas"
                 value={resolvidas}
-                sub="Status simulado"
+                sub="Registros marcados como resolvidos"
                 Icon={CheckCircle2}
               />
 
               <StatCard
-                label="Monitor IoT"
-                value="ESP32"
-                sub="Simulação disponível no Wokwi"
-                Icon={RadioTower}
+                label="Pendentes"
+                value={pendentes}
+                sub="Aguardando análise"
+                Icon={ClipboardList}
                 accent="text-sky-300"
               />
+
             </div>
 
             <div className="grid xl:grid-cols-5 gap-5">
+
+              {/* OCORRÊNCIAS RECENTES */}
               <section className="glass rounded-2xl p-6 xl:col-span-3">
+
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="heading text-xl font-bold text-white">
                     Ocorrências recentes
                   </h2>
 
                   <button
-                    onClick={() => setPage('ocorrencias')}
+                    type="button"
+                    onClick={() => setPage("ocorrencias")}
                     className="text-sm text-teal-300"
                   >
                     Ver todas →
@@ -170,37 +292,55 @@ export default function App() {
 
                 {api.loading ? (
                   <p className="text-slate-400">
-                    Carregando API...
+                    Carregando ocorrências...
                   </p>
-                ) : api.items.length ? (
+                ) : api.error ? (
+                  <p className="text-red-300 text-sm">
+                    Não foi possível carregar os registros.
+                  </p>
+                ) : api.items.length > 0 ? (
                   <div className="space-y-3">
-                    {api.items.slice(0, 4).map((x) => (
+
+                    {api.items.slice(0, 4).map((item) => (
                       <div
-                        key={x.id}
+                        key={item.id}
                         className="border-b border-slate-700/60 pb-3 flex justify-between gap-4"
                       >
-                        <div>
-                          <div className="text-sm text-white font-semibold">
-                            {x.titulo}
+                        <div className="min-w-0">
+                          <div className="text-sm text-white font-semibold break-words">
+                            {item.titulo}
                           </div>
 
-                          <div className="text-xs text-slate-400 mt-1">
-                            {x.local}
+                          <div className="text-xs text-slate-400 mt-1 break-words">
+                            {item.endereco || "Endereço não informado"}
+                          </div>
+
+                          <div className="text-xs text-slate-500 mt-1">
+                            {item.tipo} ·{" "}
+                            {item.gravidade === "Media"
+                              ? "Média"
+                              : item.gravidade}
                           </div>
                         </div>
 
                         <span className="text-xs text-teal-300 shrink-0">
-                          {x.status}
+                          {item.status === "Em analise"
+                            ? "Em análise"
+                            : item.status}
                         </span>
                       </div>
                     ))}
+
                   </div>
                 ) : (
                   <EmptyState />
                 )}
+
               </section>
 
+              {/* REGIÃO PILOTO */}
               <section className="glass rounded-2xl p-6 xl:col-span-2">
+
                 <h2 className="heading text-xl font-bold text-white mb-3">
                   Região piloto
                 </h2>
@@ -215,80 +355,130 @@ export default function App() {
                     FIAP Paulista · São Paulo
                   </span>
 
-                  <span className="text-xs text-slate-400">
-                    Área de estudo, sem pontos georreferenciados
+                  <span className="text-xs text-slate-400 text-center px-4">
+                    Área de estudo do UrbanSense
                   </span>
                 </div>
 
                 <p className="text-xs text-slate-400 leading-relaxed mt-4">
-                  O mapa de ocorrências reais será integrado
-                  somente após coleta e validação de coordenadas.
+                  Os endereços cadastrados são fornecidos
+                  pelos usuários. As condições relatadas
+                  ainda não possuem verificação independente.
                 </p>
 
-                <a
-                  className="text-teal-300 text-sm flex gap-2 mt-4 items-center"
-                  target="_blank"
-                  rel="noreferrer"
-                  href="https://wokwi.com/projects/480078211156907009"
-                >
-                  Abrir protótipo IoT
-                  <ExternalLink size={15} />
-                </a>
+                {/* PROTÓTIPO IOT */}
+                <div className="mt-5 pt-4 border-t border-slate-700/60">
+
+                  <div className="flex items-center gap-2 text-teal-300 mb-2">
+                    <RadioTower size={18} />
+
+                    <span className="text-sm font-semibold">
+                      Protótipo IoT
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Simulação independente com ESP32,
+                    sensor LDR, LCD e alertas.
+                    A integração automática com o
+                    Supabase ainda não foi implementada.
+                  </p>
+
+                  <a
+                    className="text-teal-300 text-sm flex gap-2 mt-4 items-center"
+                    target="_blank"
+                    rel="noreferrer"
+                    href="https://wokwi.com/projects/480078211156907009"
+                  >
+                    Abrir protótipo no Wokwi
+                    <ExternalLink size={15} />
+                  </a>
+
+                </div>
               </section>
+
             </div>
           </>
         )}
 
-        {/* PÁGINA DE OCORRÊNCIAS */}
-
-        {page === 'ocorrencias' && (
+        {/* GESTÃO DE OCORRÊNCIAS */}
+        {page === "ocorrencias" && (
           <>
             <div className="flex flex-wrap justify-between gap-3 items-center mb-5">
+
               <div>
                 <h2 className="heading text-xl font-bold text-white">
                   Registros de acessibilidade
                 </h2>
 
                 <p className="text-sm text-slate-400 mt-1">
-                  CRUD real via API REST local · dados de demonstração
+                  Dados persistidos no Supabase ·
+                  CRUD com autenticação
                 </p>
               </div>
 
               <div className="flex gap-2">
+
                 <button
+                  type="button"
                   className="ghost flex gap-2 items-center"
                   onClick={api.carregar}
+                  disabled={api.loading}
                 >
-                  <RefreshCw size={16} />
+                  <RefreshCw
+                    size={16}
+                    className={api.loading ? "animate-spin" : ""}
+                  />
                   Atualizar
                 </button>
 
                 <button
+                  type="button"
                   className="action flex gap-2 items-center"
                   onClick={abrirNovo}
                 >
                   <Plus size={17} />
                   Nova ocorrência
                 </button>
+
               </div>
             </div>
 
+            {/* AVISO SOBRE OS REGISTROS */}
+            <div className="mb-5 rounded-xl border border-sky-400/20 bg-sky-400/5 px-4 py-3">
+              <p className="text-xs text-slate-300">
+                Os registros são armazenados no Supabase,
+                mas as condições urbanas relatadas não
+                são verificadas automaticamente.
+                Esta plataforma é um protótipo acadêmico.
+              </p>
+            </div>
+
+            {/* FILTROS */}
             <Filters f={filtros} />
 
+            {/* LISTAGEM DE OCORRÊNCIAS */}
             {api.loading ? (
               <p className="text-slate-400">
-                Carregando ocorrências...
+                Carregando ocorrências do Supabase...
               </p>
-            ) : filtros.filtrados.length ? (
+            ) : api.error ? (
+              <p className="text-red-300 text-sm">
+                Não foi possível consultar as ocorrências.
+              </p>
+            ) : filtros.filtrados.length > 0 ? (
               <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filtros.filtrados.map((x) => (
+
+                {filtros.filtrados.map((item) => (
                   <OcorrenceCard
-                    key={x.id}
-                    item={x}
+                    key={item.id}
+                    item={item}
+                    usuarioId={user?.id}
                     onEdit={editar}
                     onDelete={excluir}
                   />
                 ))}
+
               </div>
             ) : (
               <EmptyState
@@ -298,10 +488,10 @@ export default function App() {
           </>
         )}
 
-        {/* SOBRE O PROJETO */}
-
-        {page === 'sobre' && (
+        {/* SOBRE O URBANSENSE */}
+        {page === "sobre" && (
           <div className="glass rounded-3xl p-7 md:p-10 max-w-4xl">
+
             <div className="text-teal-300 text-sm uppercase tracking-widest font-bold mb-3">
               Sobre a solução
             </div>
@@ -311,45 +501,69 @@ export default function App() {
             </h2>
 
             <p className="text-slate-300 leading-8 mb-5">
-              O UrbanSense é um projeto acadêmico individual da
-              Global Solution 2026.2 da FIAP. A plataforma permite
-              registrar e gerenciar ocorrências ilustrativas
-              relacionadas a obstáculos e condições urbanas que
-              podem afetar a mobilidade.
+              O UrbanSense é um projeto acadêmico
+              individual desenvolvido para a
+              Global Solution 2026.2 da FIAP.
+              A plataforma permite registrar,
+              consultar e gerenciar ocorrências
+              relacionadas à acessibilidade urbana.
             </p>
 
             <p className="text-slate-300 leading-8 mb-5">
-              O protótipo de Edge Computing utiliza ESP32,
-              sensor LDR, LCD, LEDs e buzzer para demonstrar
-              monitoramento local de iluminação. A aplicação
-              web não recebe telemetria automática do ESP32
-              nesta versão.
+              A aplicação utiliza React e Supabase
+              para autenticação de usuários e
+              persistência dos registros em um
+              banco de dados PostgreSQL.
+            </p>
+
+            <p className="text-slate-300 leading-8 mb-5">
+              Os usuários autenticados podem
+              cadastrar ocorrências e gerenciar
+              os registros de sua autoria.
+            </p>
+
+            <p className="text-slate-300 leading-8 mb-5">
+              O protótipo de Edge Computing
+              utiliza ESP32, sensor LDR, LCD,
+              LEDs e buzzer para demonstrar
+              o monitoramento local de luminosidade.
+              A aplicação web ainda não recebe
+              dados automaticamente do dispositivo.
             </p>
 
             <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-amber-200 text-sm">
-              Todos os registros iniciais são fictícios.
-              A plataforma não certifica acessibilidade,
-              segurança ou condições reais de qualquer trajeto.
+              O UrbanSense é um protótipo acadêmico.
+              A existência de registros no banco
+              não significa que os problemas relatados
+              tenham sido verificados presencialmente.
+              A plataforma não certifica a segurança
+              ou acessibilidade dos trajetos.
             </div>
 
             <div className="flex gap-2 items-center mt-6 text-sm text-slate-400">
               <Activity size={17} />
-              Desenvolvido por João Vitor Batista De Mattos · RM 571389
+              Desenvolvido por João Vitor Batista
+              De Mattos · RM 571389
             </div>
+
           </div>
         )}
 
+        {/* RODAPÉ */}
         <Footer />
 
         {/* FORMULÁRIO DE CADASTRO E EDIÇÃO */}
-
         {modal && (
           <OcorrenceForm
             item={editing}
             onSave={salvar}
-            onClose={() => setModal(false)}
+            onClose={() => {
+              setModal(false);
+              setEditing(null);
+            }}
           />
         )}
+
       </main>
     </div>
   );
